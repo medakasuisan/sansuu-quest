@@ -190,9 +190,12 @@
   .ans-label{font-size:13px;font-weight:800;color:var(--muted)}
   .ans-wrap{display:flex;align-items:center;gap:6px}
   .ans-box{
-    width:96px;height:64px;border:3px solid var(--line);border-radius:16px;
+    /* v6 Phase2 追補A-2: 1桁(わり算)のときは従来どおり min-width ぴったりで見た目不変。
+     * 3〜4桁(かけ算)のときだけ width:auto で横に伸びる。フォントサイズは変えない。 */
+    min-width:96px;width:auto;max-width:200px;padding:0 10px;white-space:nowrap;
+    height:64px;border:3px solid var(--line);border-radius:16px;
     background:var(--plate);font-size:34px;font-weight:800;text-align:center;
-    display:grid;place-items:center;cursor:pointer;user-select:none;
+    display:grid;place-items:center;cursor:pointer;user-select:none;box-sizing:border-box;
   }
   .ans-box.active{border-color:var(--accent);background:var(--accent-soft)}
   .ans-box.empty::after{content:"?";color:var(--muted);opacity:.45}
@@ -354,7 +357,7 @@
     .pad button{font-size:26px;min-height:62px}
     .pad button.pad-fn{font-size:14px}
     .btn-big{max-width:100%;padding:16px 0}
-    .ans-box{width:82px;height:60px;font-size:30px}
+    .ans-box{min-width:82px;width:auto;max-width:180px;padding:0 8px;height:60px;font-size:30px}
     .ans-row{gap:10px}
     .topbar{gap:8px}
     .btn-home{padding:8px 10px;font-size:13px}
@@ -379,7 +382,7 @@
     #screen-play .pad{margin-top:8px;gap:5px}
     #screen-play .pad button{padding:7px 0;font-size:19px;min-height:0}
     #screen-play .pad button.pad-fn{font-size:12px}
-    #screen-play .ans-box{height:44px;width:74px;font-size:24px}
+    #screen-play .ans-box{height:44px;min-width:74px;width:auto;max-width:160px;padding:0 6px;font-size:24px}
     #screen-play .btn-big{padding:8px 0;margin-top:8px;font-size:16px}
   }
   /* タブレット(768px〜): ゆったり・タップ面積そのまま大きく */
@@ -388,7 +391,7 @@
     .pad{max-width:360px;gap:12px}
     .pad button{min-height:64px;font-size:26px}
     .btn-big{max-width:360px;padding:17px 0;font-size:21px}
-    .ans-box{width:108px;height:70px;font-size:38px}
+    .ans-box{min-width:108px;width:auto;max-width:220px;padding:0 12px;height:70px;font-size:38px}
     .q-word{font-size:21px}
   }
 
@@ -752,7 +755,7 @@
 
     <div class="home-status" id="home-status"></div>
 
-    <div class="unit-label">🌲 わりざんのもり</div>
+    <div class="unit-label">🌲 ぼうけんの もり</div>
     <div class="mode-grid" id="mode-list"></div>
 
     <div class="unit-label">▼ つぎのぼうけん（じゅんびちゅう）</div>
@@ -925,6 +928,116 @@ function checkFormula(d) {
   return r === 0 ? `${b} × ${q} ＝ ${a}` : `${b} × ${q} ＋ ${r} ＝ ${a}`;
 }
 
+/* ---------- かけ算の数の生成(正しさの核・v6 Phase2) ----------
+ * 3年生の範囲(学習指導要領A(3)): easy10=何十×1位数, 2x1=2位数×1位数,
+ * 3x1=3位数×1位数, 2x2=2位数×2位数。allowZero は「まと当て」など0のかけ算(K4)を
+ * 自然に混ぜたいときのフラグ(1/10で a か b を 0 にする)。
+ * → 構成的に生成するので範囲外は原理的に起きない。さらに assertMultiplication で二重に保証する。 */
+function makeMultiplication({ digits, allowZero }) {
+  let a, b;
+  switch (digits) {
+    case 'easy10': a = rand(2, 9) * 10; b = rand(2, 9); break;
+    case '2x1':    a = rand(11, 99);    b = rand(2, 9); break;
+    case '3x1':    a = rand(101, 999);  b = rand(2, 9); break;
+    case '2x2':    a = rand(11, 99);    b = rand(11, 99); break;
+    default: throw new Error('makeMultiplication: unknown digits ' + digits);
+  }
+  if (allowZero && rand(1, 10) === 1) {
+    if (Math.random() < 0.5) a = 0; else b = 0;
+  }
+  const p = a * b;
+  const parts = { a1: Math.floor(a / 10) * 10, a2: a % 10 };
+  if (digits === '2x2') { parts.b1 = Math.floor(b / 10) * 10; parts.b2 = b % 10; }
+  return { a, b, p, parts, digits, allowZero: !!allowZero, kind: 'mul' };
+}
+/* digitsごとの桁範囲(a,bがともに0でないときだけ検査。allowZeroで0になった場合は対象外) */
+const MUL_DIGIT_RANGES = {
+  easy10: [[20, 90], [2, 9]],
+  '2x1':  [[11, 99], [2, 9]],
+  '3x1':  [[101, 999], [2, 9]],
+  '2x2':  [[11, 99], [11, 99]],
+};
+function assertMultiplication(d) {
+  const { a, b, p, parts, digits } = d;
+  if (![a, b, p].every(Number.isInteger) || a < 0 || b < 0 || p < 0)
+    throw new Error('non-integer or negative: ' + JSON.stringify(d));
+  if (p !== a * b) throw new Error('p ≠ a*b: ' + JSON.stringify(d));               // A2
+  if (a !== 0 && b !== 0) {
+    const r = MUL_DIGIT_RANGES[digits];
+    if (r) {                                                                        // A3
+      if (a < r[0][0] || a > r[0][1]) throw new Error('a out of range: ' + JSON.stringify(d));
+      if (b < r[1][0] || b > r[1][1]) throw new Error('b out of range: ' + JSON.stringify(d));
+      if (digits === 'easy10' && a % 10 !== 0) throw new Error('a not a multiple of 10 for easy10: ' + JSON.stringify(d));
+    }
+  }
+  if (parts.a1 + parts.a2 !== a) throw new Error('a1+a2 ≠ a: ' + JSON.stringify(d)); // A4
+  if (parts.a1 % 10 !== 0) throw new Error('a1 not a multiple of 10: ' + JSON.stringify(d)); // A5
+  if (parts.b1 !== undefined) {
+    if (parts.b1 + parts.b2 !== b) throw new Error('b1+b2 ≠ b: ' + JSON.stringify(d));
+    if (parts.b1 % 10 !== 0) throw new Error('b1 not a multiple of 10: ' + JSON.stringify(d));
+  }
+  if ((a === 0 || b === 0) && p !== 0) throw new Error('0のかけ算の答えが0でない: ' + JSON.stringify(d)); // A6
+  return true;
+}
+/* mulLaw/mulEstimate など a×b=p の形にそのまま収まらない生成器も
+ * ここで一括して検証する(nextProblem からも呼ばれる実行時ガード)。 */
+function assertMulProblem(d) {
+  if (d.variant === 'law') {
+    assertMultiplication(d.pair);
+    if (d.product !== d.pair.p * d.c) throw new Error('mulLaw: product ≠ pair.p*c: ' + JSON.stringify(d));
+    if (d.a !== d.pair.p || d.b !== d.c) throw new Error('mulLaw: a/b mismatch: ' + JSON.stringify(d));
+    return true;
+  }
+  if (d.variant === 'estimate') {
+    assertMultiplication(d);
+    if (d.aRound % 10 !== 0 || Math.abs(d.aRound - d.a) > 5)
+      throw new Error('mulEstimate: rounding invalid: ' + JSON.stringify(d));
+    if (d.estimate !== d.aRound * d.b) throw new Error('mulEstimate: estimate ≠ aRound*b: ' + JSON.stringify(d));
+    return true;
+  }
+  return assertMultiplication(d);
+}
+
+/* ---------- 解説ステップ(分配法則ベース・かけ算共通) ----------
+ * 答えを先に言わず、分けて→かけて→たす、の順で追体験させる。
+ * a または b が 0 のときは分配せず「0のかけ算」の説明にする(K4)。
+ * digits='2x2' のときは乗数(b)側を分ける(45×23 → 45×20 と 45×3)。 */
+function bunpaiSteps(d) {
+  const { a, b, p, parts } = d;
+  if (a === 0 || b === 0) {
+    return [
+      'どんな数に **0** を かけても、こたえは **0** だよ。',
+      '0に どんな数を かけても、こたえは **0** だよ。',
+    ];
+  }
+  if (parts.b1 !== undefined) {
+    return [
+      `${b} を **${parts.b1}と${parts.b2}** に分けるよ。`,
+      `${a}×${parts.b1}＝**${a * parts.b1}**`,
+      `${a}×${parts.b2}＝**${a * parts.b2}**`,
+      `${a * parts.b1}＋${a * parts.b2}＝**${p}**`,
+    ];
+  }
+  return [
+    `${a} を **${parts.a1}と${parts.a2}** に分けるよ。`,
+    `${parts.a1}×${b}＝**${parts.a1 * b}**`,
+    `${parts.a2}×${b}＝**${parts.a2 * b}**`,
+    `${parts.a1 * b}＋${parts.a2 * b}＝**${p}**`,
+  ];
+}
+/* たしかめ算: かけ算は交換法則で確かめる(K3・憲法「乗法の順序非依存」とも整合) */
+function mulCheckFormula(d) { return `${d.b} × ${d.a} ＝ ${d.p}`; }
+/* お皿の視覚化(既存 renderVisual をそのまま使う)。DOM爆発防止のため
+ * 積が60以下のときだけ付ける(v6 Phase2契約 §2-5)。 */
+function mulVisual(d, item) {
+  if (d.p > 60) return undefined;
+  return {
+    emoji: item.emoji, groups: d.b, groupSize: d.a, rest: 0,
+    groupTag: '1つぶん', restTag: 'あまり',
+    caption: `${item.name}が 1つぶん ${d.a}${item.counter}の ${item.emoji}が ${d.b}つぶんで ${d.p}${item.counter}。`,
+  };
+}
+
 /* ---------- 問題ジェネレータ ----------
  * 共通スキーマ:
  *   prompt  : {calc:'35 ÷ 8 ＝ ?'} または {word:'…@@数@@…', ask:'問いかけ'}
@@ -1050,6 +1163,188 @@ const Generators = {
   },
 };
 
+/* ---------- かけ算の問題ジェネレータ(v6 Phase2・共通スキーマは上と同一) ----------
+ * わり算の Generators は一切変更していない(不可侵)。既存オブジェクトに
+ * Object.assign で追加することで diff を分離する。 */
+Object.assign(Generators, {
+
+  /* 何十×1位数。「10のたばがいくつ分」で考える(K1導入・bunpaiStepsとは別の説明) */
+  mulTens() {
+    const d = makeMultiplication({ digits: 'easy10', allowZero: false });
+    const item = pick(ITEMS);
+    const tens = d.a / 10;
+    return {
+      prompt: { calc: `${d.a} × ${d.b} ＝ ?` },
+      fields: [{ key: 'q', label: 'こたえ', unit: '' }],
+      answer: { q: d.p },
+      explain: {
+        steps: [
+          `${d.a} は「10が **${tens}こ**」ということだよ。`,
+          `10のたばで考えると、**${tens}×${d.b}＝${tens * d.b}** こぶんになるね。`,
+          `10が ${tens * d.b}こ だから、こたえは **${d.p}**。`,
+        ],
+        visual: mulVisual(d, item),
+        checkFormula: mulCheckFormula(d),
+      },
+      d,
+    };
+  },
+
+  /* 2位数×1位数(分配法則の基本形) */
+  mulCalc2x1() {
+    const d = makeMultiplication({ digits: '2x1', allowZero: false });
+    const item = pick(ITEMS);
+    return {
+      prompt: { calc: `${d.a} × ${d.b} ＝ ?` },
+      fields: [{ key: 'q', label: 'こたえ', unit: '' }],
+      answer: { q: d.p },
+      explain: { steps: bunpaiSteps(d), visual: mulVisual(d, item), checkFormula: mulCheckFormula(d) },
+      d,
+    };
+  },
+
+  /* 3位数×1位数(積が大きいので visual は常に付かない=DOM爆発防止) */
+  mulCalc3x1() {
+    const d = makeMultiplication({ digits: '3x1', allowZero: false });
+    const item = pick(ITEMS);
+    return {
+      prompt: { calc: `${d.a} × ${d.b} ＝ ?` },
+      fields: [{ key: 'q', label: 'こたえ', unit: '' }],
+      answer: { q: d.p },
+      explain: { steps: bunpaiSteps(d), visual: mulVisual(d, item), checkFormula: mulCheckFormula(d) },
+      d,
+    };
+  },
+
+  /* 2位数×2位数(乗数側=bを分ける分配法則) */
+  mulCalc2x2() {
+    const d = makeMultiplication({ digits: '2x2', allowZero: false });
+    const item = pick(ITEMS);
+    return {
+      prompt: { calc: `${d.a} × ${d.b} ＝ ?` },
+      fields: [{ key: 'q', label: 'こたえ', unit: '' }],
+      answer: { q: d.p },
+      explain: { steps: bunpaiSteps(d), visual: mulVisual(d, item), checkFormula: mulCheckFormula(d) },
+      d,
+    };
+  },
+
+  /* まと当て文脈の0のかけ算(K4)。答えは必ず0になるまで引き直す */
+  mulZero() {
+    let d;
+    do { d = makeMultiplication({ digits: '2x1', allowZero: true }); } while (d.a !== 0 && d.b !== 0);
+    return {
+      prompt: { calc: `${d.a} × ${d.b} ＝ ?` },
+      fields: [{ key: 'q', label: 'とくてん', unit: 'てん' }],
+      answer: { q: d.p },
+      explain: {
+        steps: [
+          '🎯 まと当てゲームで、**0点** の まとに 何回 あてても とくてんは ふえないよ。',
+          ...bunpaiSteps(d),
+        ],
+        visual: undefined,
+        checkFormula: mulCheckFormula(d),
+      },
+      d,
+    };
+  },
+
+  /* 計算のきまり(交換・結合)を使って くふうして計算する(K3) */
+  mulLaw() {
+    const pairs = [[2, 5], [4, 25], [5, 20], [25, 4], [5, 2], [20, 5]];
+    const [p1, p2] = pick(pairs);
+    const pair = { a: p1, b: p2, p: p1 * p2, parts: { a1: Math.floor(p1 / 10) * 10, a2: p1 % 10 }, digits: 'lawPair', kind: 'mul' };
+    const c = rand(2, 9);
+    const product = pair.p * c;
+    const order = pick(['cxy', 'xcy', 'xyc']);
+    const arr = order === 'cxy' ? [c, p1, p2] : order === 'xcy' ? [p1, c, p2] : [p1, p2, c];
+    const d = { kind: 'mul', variant: 'law', pair, c, product, a: pair.p, b: c };
+    return {
+      prompt: { calc: `${arr[0]} × ${arr[1]} × ${arr[2]} ＝ ?` },
+      fields: [{ key: 'q', label: 'こたえ', unit: '' }],
+      answer: { q: product },
+      explain: {
+        steps: [
+          'かけ算は じゅんばんを かえても こたえは 同じ(**計算のきまり**)だよ。',
+          `${p1} と ${p2} を 先に 計算すると、${p1}×${p2}＝**${pair.p}**(キリのいい数!)`,
+          `のこりの ${c} を かけて、${pair.p}×${c}＝**${product}**。`,
+        ],
+        visual: undefined,
+        checkFormula: `${c} × ${p2} × ${p1} ＝ ${product}`,
+      },
+      d,
+    };
+  },
+
+  /* 見積り(がい数)。2択UIが無いので「aを一番近い10のくらいにしてから計算する」数値解答に落とす(K5) */
+  mulEstimate() {
+    const base = makeMultiplication({ digits: '2x1', allowZero: false });
+    const aRound = Math.round(base.a / 10) * 10;
+    const estimate = aRound * base.b;
+    const d = { ...base, variant: 'estimate', aRound, estimate };
+    return {
+      prompt: {
+        word: `見積り(がい数)で 考えるよ。@@${d.a}@@ × @@${d.b}@@ は だいたい いくつに なるかな？`,
+        ask: `${d.a} を 一番近い10のくらいの数にしてから 計算しよう。`,
+      },
+      fields: [{ key: 'q', label: '見積り', unit: '' }],
+      answer: { q: estimate },
+      explain: {
+        steps: [
+          `${d.a} を 一番近い10のくらいにすると **${aRound}** だよ。`,
+          `${aRound}×${d.b}＝**${estimate}**。これが 見積りの こたえ。`,
+        ],
+        visual: undefined,
+        checkFormula: `${d.b} × ${aRound} ＝ ${estimate}`,
+      },
+      d,
+    };
+  },
+
+  /* 文章題・倍(単価×こすうで だい金をもとめる。K2) */
+  wordTimes() {
+    const digits = pick(['2x1', '2x2']);
+    const d = makeMultiplication({ digits, allowZero: false });
+    const item = pick(ITEMS);
+    const steps = [
+      `「1${item.counter} ${d.a}円」の **${d.b}${item.counter}ぶん** だから、かけ算だね。しきは **${d.a}×${d.b}**。`,
+      ...bunpaiSteps(d),
+      `こたえ: ぜんぶで **${d.p}円**。`,
+    ];
+    return {
+      prompt: {
+        word: `${item.emoji} 1${item.counter} @@${d.a}@@円の ${item.name}を @@${d.b}@@${item.counter} 買います。`,
+        ask: 'ぜんぶで 何円に なりますか。',
+      },
+      fields: [{ key: 'q', label: 'だい金', unit: '円' }],
+      answer: { q: d.p },
+      explain: { steps, visual: mulVisual(d, item), checkFormula: mulCheckFormula(d) },
+      d,
+    };
+  },
+
+  /* 文章題・除法の逆(同じ数ずつ分けた1つぶんから、はじめの数をもとめる。K2) */
+  wordInverse() {
+    const d = makeMultiplication({ digits: '2x1', allowZero: false });
+    const item = pick(ITEMS);
+    const steps = [
+      `「1人ぶんが ${d.a}${item.counter}」で「${d.b}人ぶん」だから、はじめの数は かけ算で もとめられるよ。しきは **${d.a}×${d.b}**。`,
+      ...bunpaiSteps(d),
+      `こたえ: はじめは **${d.p}${item.counter}** あった。`,
+    ];
+    return {
+      prompt: {
+        word: `${item.emoji} ${item.name}を @@${d.b}@@人で 同じ数ずつ 分けたら、1人ぶんは @@${d.a}@@${item.counter}に なりました。`,
+        ask: `はじめに ${item.name}は 何${item.counter} ありましたか。`,
+      },
+      fields: [{ key: 'q', label: 'はじめの数', unit: item.counter }],
+      answer: { q: d.p },
+      explain: { steps, visual: mulVisual(d, item), checkFormula: mulCheckFormula(d) },
+      d,
+    };
+  },
+});
+
 /* ---------- カリキュラム(拡張ポイント) ----------
  * 新しいスキル = pool に生成器サンクを足すだけ。
  * 新しい単元   = units に追加(enabled:false ならロック表示)。 */
@@ -1086,7 +1381,43 @@ const CURRICULUM = {
         { weight: 2, gen: () => Generators.wordQuota({ withRemainder: true }) },
       ],
     },
-    { id: 'mul',    emoji: '🌋', title: 'かけざんのかざん', desc: 'じゅんびちゅう…おたのしみに！', enabled: false },
+    {
+      id: 'mul-basic', emoji: '✖️', title: 'かけざんの きほん',
+      desc: '九九をつかって、かけ算の きほんを れんしゅうしよう！',
+      enabled: true, questions: 10,
+      pool: [
+        { weight: 6, gen: () => Generators.mulCalc2x1() },
+        { weight: 4, gen: () => Generators.mulTens() },
+      ],
+    },
+    {
+      id: 'mul-big', emoji: '🧮', title: '大きな かけざん',
+      desc: '大きな数の かけ算に ちょうせんしよう！',
+      enabled: true, questions: 10,
+      pool: [
+        { weight: 5, gen: () => Generators.mulCalc3x1() },
+        { weight: 5, gen: () => Generators.mulCalc2x2() },
+      ],
+    },
+    {
+      id: 'mul-tech', emoji: '💡', title: 'かけざんの わざ',
+      desc: 'くふうして計算したり、見積りをしたりしよう！',
+      enabled: true, questions: 10,
+      pool: [
+        { weight: 3, gen: () => Generators.mulLaw() },
+        { weight: 4, gen: () => Generators.mulEstimate() },
+        { weight: 3, gen: () => Generators.mulZero() },
+      ],
+    },
+    {
+      id: 'mul-word', emoji: '📖', title: 'かけざんの ぶんしょうだい',
+      desc: 'おはなしを読んで、しきを 考えよう！',
+      enabled: true, questions: 10,
+      pool: [
+        { weight: 5, gen: () => Generators.wordTimes() },
+        { weight: 5, gen: () => Generators.wordInverse() },
+      ],
+    },
     { id: 'hissan', emoji: '🕳️', title: 'ひっさんのどうくつ', desc: 'じゅんびちゅう…おたのしみに！', enabled: false },
   ],
 };
@@ -1098,11 +1429,18 @@ function drawFromPool(pool) {
   return pool[pool.length - 1].gen();
 }
 
+/* d.kind==='mul' ならかけ算の検証、それ以外(従来どおり)はわり算の検証。
+ * わり算側の assertDivision は一切変更していない(不可侵)。単元をまたいで
+ * nextProblem を共有するための最小限のディスパッチ。 */
+function assertProblem(d) {
+  return (d && d.kind === 'mul') ? assertMulProblem(d) : assertDivision(d);
+}
+
 /* 直前と同じ式 (a,b) の連続を避けつつ生成。invariant も必ず通す */
 function nextProblem(unit, prev) {
   for (let i = 0; i < 30; i++) {
     const p = drawFromPool(unit.pool);
-    assertDivision(p.d);
+    assertProblem(p.d);
     if (!prev || p.d.a !== prev.d.a || p.d.b !== prev.d.b) return p;
   }
   return drawFromPool(unit.pool);
@@ -1135,6 +1473,56 @@ function selfTest() {
     }
   }
   console.log(`✅ selfTest passed: ${n} problems verified (a=b×q+r, 0≤r<b, 九九 range, visual consistency)`);
+
+  /* ---- v6 Phase2: かけ算 9生成器の検証(新規ブロック。上のわり算ブロックは変更していない) ---- */
+  /* D4: 23×4 の bunpaiSteps が「20×4」「80」「3×4」「12」「92」をこの順で含む */
+  const fixture = bunpaiSteps({ a: 23, b: 4, p: 92, parts: { a1: 20, a2: 3 } });
+  const fixtureJoined = fixture.join(' / ');
+  let cursor = -1;
+  for (const token of ['20×4', '**80**', '3×4', '**12**', '**92**']) {
+    const idx = fixtureJoined.indexOf(token, cursor + 1);
+    if (idx <= cursor) throw new Error(`bunpaiSteps fixture(23×4): "${token}" が正しい順で含まれない: ${fixtureJoined}`);
+    cursor = idx;
+  }
+
+  const mulCases = [
+    ['mulTens',     () => Generators.mulTens()],
+    ['mulCalc2x1',  () => Generators.mulCalc2x1()],
+    ['mulCalc3x1',  () => Generators.mulCalc3x1()],
+    ['mulCalc2x2',  () => Generators.mulCalc2x2()],
+    ['mulZero',     () => Generators.mulZero()],
+    ['mulLaw',      () => Generators.mulLaw()],
+    ['mulEstimate', () => Generators.mulEstimate()],
+    ['wordTimes',   () => Generators.wordTimes()],
+    ['wordInverse', () => Generators.wordInverse()],
+  ];
+  let nMul = 0;
+  let mul3x1VisualCount = 0, mul3x1Total = 0; // D6 実測用
+  for (const [name, gen] of mulCases) {
+    for (let i = 0; i < 200; i++) {
+      const p = gen();
+      assertMulProblem(p.d); // D3: assertMultiplication(A1〜A6)を経由
+      for (const f of p.fields) {
+        if (!(f.key in p.answer)) throw new Error(`${name}: field ${f.key} has no answer`);
+        if (!Number.isInteger(p.answer[f.key]) || p.answer[f.key] < 0)
+          throw new Error(`${name}: bad answer for ${f.key}`);
+      }
+      if (name === 'mulZero' && p.answer.q !== 0) // D5
+        throw new Error(`mulZero: answer must be 0, got ${p.answer.q}`);
+      const v = p.explain.visual;
+      if (name === 'mulCalc3x1') { mul3x1Total++; if (v) mul3x1VisualCount++; }
+      if (v) {
+        if (!('p' in p.d)) throw new Error(`${name}: visual present but d has no p`);
+        if (p.d.p > 60) throw new Error(`${name}: visual should be absent when p>60 (p=${p.d.p})`); // D6
+        if (v.groups * v.groupSize + v.rest !== p.d.p) throw new Error(`${name}: visual mismatch`); // D7
+      }
+      nMul++;
+    }
+  }
+  if (mul3x1VisualCount !== 0)
+    throw new Error(`mulCalc3x1: visual should never appear (p is always >60), but ${mul3x1VisualCount}/${mul3x1Total} had visual`);
+  console.log(`✅ selfTest(mul) passed: ${nMul} problems verified (a×b=p, bunpai parts, mulZero=0, visual gate p≤60, mulCalc3x1 visual=${mul3x1VisualCount}/${mul3x1Total})`);
+  console.log(`✅ selfTest total: ${n + nMul} problems verified`);
 }
 
 /* =========================================================================
@@ -1311,7 +1699,9 @@ function renderPad() {
 
 function padInput(digit) {
   const cur = state.values[state.activeField] || '';
-  if (cur.length >= 2) return;
+  /* v6 Phase2 追補A-1: わり算は答えが常に1桁(商1〜9/あまり0〜8)だが、
+   * かけ算は積が最大4桁(999×9=8991等)になるため上限を2→4に拡張。 */
+  if (cur.length >= 4) return;
   state.values[state.activeField] = cur === '0' ? digit : cur + digit;
   syncAnswerBoxes();
 }
