@@ -1523,6 +1523,9 @@ function selfTest() {
     throw new Error(`mulCalc3x1: visual should never appear (p is always >60), but ${mul3x1VisualCount}/${mul3x1Total} had visual`);
   console.log(`✅ selfTest(mul) passed: ${nMul} problems verified (a×b=p, bunpai parts, mulZero=0, visual gate p≤60, mulCalc3x1 visual=${mul3x1VisualCount}/${mul3x1Total})`);
   console.log(`✅ selfTest total: ${n + nMul} problems verified`);
+
+  /* CLAUDE.md §3-2: セーブ移行の機械テストも selfTest() の末尾から呼ぶ */
+  selfTestSave();
 }
 
 /* =========================================================================
@@ -2714,8 +2717,11 @@ function defaultGame() {
     rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
     /* mulCorrect: かけ算(mul-*)単元での正解累計のみ。かざんの仲間加入導線(§2-4)専用のカウンタで、
      * totalCorrect(わり算・かけ算あわせた既存の累計)の意味は変えない。
-     * estimateCorrect: 見積り問題(mulEstimate)の正解累計。レア25オヨソンの出現条件用。 */
-    stats: { totalAnswered: 0, totalCorrect: 0, explainViews: 0, bestStreak: 0, mulCorrect: 0, estimateCorrect: 0 },
+     * estimateCorrect: 見積り問題(mulEstimate)の正解累計。レア25オヨソンの出現条件用。
+     * divCorrect: v6 Phase4a 追補B-1。わり算(div-*)単元での正解累計のみ。森(1〜3)の加入判定を
+     * totalCorrect → divCorrect に切り替えるための専用カウンタ(エリアの対称化)。
+     * 既存セーブに divCorrect が無い場合は mergeIntoDefault() が totalCorrect の値で埋める(移行処理)。 */
+    stats: { totalAnswered: 0, totalCorrect: 0, explainViews: 0, bestStreak: 0, mulCorrect: 0, estimateCorrect: 0, divCorrect: 0 },
     nextEncounterAt: 2, introSeen: false,
     compCelebrated: false,
     mission: null, /* {date, id, progress, done, rewarded} は ensureMission() が管理 */
@@ -2731,10 +2737,18 @@ function defaultGame() {
 }
 function mergeIntoDefault(p) {
   const d = defaultGame();
+  const mergedStats = Object.assign(d.stats, p.stats);
+  /* v6 Phase4a 追補B-1: 移行処理(必須)。既存セーブ(p.stats に divCorrect が無い)は、
+   * Phase4a 以前は かけ算が存在せず totalCorrect が全てわり算由来だったため、
+   * divCorrect の初期値を既存の totalCorrect で埋める。0から始めると「次のなかま」までの
+   * 進捗が巻き戻ってしまうため必須の処理(新規セーブは p.stats が無い/divCorrect ありのため対象外)。 */
+  if (p && p.stats && p.stats.divCorrect === undefined) {
+    mergedStats.divCorrect = mergedStats.totalCorrect;
+  }
   return Object.assign(d, p, {
     lines: Object.assign(d.lines, p.lines),
     rares: Object.assign(d.rares, p.rares),
-    stats: Object.assign(d.stats, p.stats),
+    stats: mergedStats,
     catchOrder: Array.isArray(p.catchOrder) ? p.catchOrder : d.catchOrder,
     story: {
       read: Object.assign({}, d.story.read, p.story && p.story.read),
@@ -2763,6 +2777,120 @@ function saveGameObj(obj) {
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(obj)); } catch (e) { /* 保存できなくても続行 */ }
 }
 function saveGame() { saveGameObj(game); }
+
+/* ---------- セーブ移行の機械テスト(CLAUDE.md §2-2/§3-2・v6 Phase4a 追補B で制定) ----------
+ * selfTest() が問題生成の正しさを機械保証するのと同じ思想で、mergeIntoDefault() による
+ * セーブ移行の正しさも機械保証する。代表セーブ(新規/進行中/コンプ済み + 追補B後の実在パターン)を
+ * 固定データで持ち、§2-2 R3 の4観点(消えない/巻き戻らない/暴発しない/前に進める)を assert する。 */
+const SAVE_FIXTURES = [
+  {
+    name: '新規(追補B後に作られた最新形式のセーブ。divCorrectが既にある)',
+    save: {
+      v: 2, candy: 2, activeLine: null, catchOrder: [],
+      lines: { 1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 } },
+      rares: { 10: false, 11: false, 12: false },
+      stats: { totalAnswered: 1, totalCorrect: 1, explainViews: 1, bestStreak: 1, divCorrect: 1 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 1, partnerId: null,
+    },
+  },
+  {
+    name: '進行中(追補B以前の旧形式。divCorrectが無い・森2体所持・かざん1体所持)',
+    save: {
+      v: 2, candy: 4, activeLine: 4, catchOrder: [1, 2, 4],
+      lines: {
+        1: { owned: true, xp: 10 }, 2: { owned: true, xp: 2 }, 3: { owned: false, xp: 0 },
+        4: { owned: true, xp: 5 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: true, 11: false, 12: false, 23: false, 24: false, 25: false },
+      /* divCorrect キー無し = 追補B以前の旧セーブ。totalCorrect=15 で埋まることを検証する */
+      stats: { totalAnswered: 18, totalCorrect: 15, explainViews: 15, bestStreak: 5, mulCorrect: 3, estimateCorrect: 0 },
+      nextEncounterAt: 10, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: { prologue: true }, meta: {} }, storyMigrated: true, metAt: { 1: '2026-07-01' }, bootId: 5, partnerId: 1,
+    },
+  },
+  {
+    name: 'コンプ済み(追補B以前の旧形式。24体全所持・divCorrectが無い)',
+    save: {
+      v: 2, candy: 0, activeLine: 1, catchOrder: [1, 2, 3, 4, 5, 6],
+      lines: {
+        1: { owned: true, xp: 64 }, 2: { owned: true, xp: 64 }, 3: { owned: true, xp: 64 },
+        4: { owned: true, xp: 64 }, 5: { owned: true, xp: 64 }, 6: { owned: true, xp: 64 },
+      }, /* 64 = MAX_LINE_XP(定数の初期化順に依存しないよう直接数値で持つ) */
+      rares: { 10: true, 11: true, 12: true, 23: true, 24: true, 25: true },
+      stats: { totalAnswered: 600, totalCorrect: 500, explainViews: 500, bestStreak: 20, mulCorrect: 200, estimateCorrect: 40 },
+      nextEncounterAt: 22, introSeen: true, compCelebrated: true, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 40, partnerId: 3,
+    },
+  },
+  {
+    name: '追補B後・かけ算しか遊んでいない子(divCorrect:0が正当な値。totalCorrectで上書きされてはいけない)',
+    save: {
+      v: 2, candy: 6, activeLine: 4, catchOrder: [4],
+      lines: {
+        1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
+        4: { owned: true, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
+      stats: { totalAnswered: 12, totalCorrect: 12, explainViews: 12, bestStreak: 5, mulCorrect: 12, estimateCorrect: 2, divCorrect: 0 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 3, partnerId: 4,
+    },
+  },
+];
+function selfTestSave() {
+  let n = 0;
+  for (const { name, save } of SAVE_FIXTURES) {
+    /* mergeIntoDefault は引数を書き換えないので、入力(save)をそのまま「移行前」の参照として使える */
+    const before = save;
+    const after = mergeIntoDefault(JSON.parse(JSON.stringify(save))); /* 実際のloadGame()と同じくJSON経由のコピーを渡す */
+
+    /* R3-1: 消えない。入力に存在した lines/rares/candy/xp はすべて保持される */
+    for (const key of Object.keys(before.lines)) {
+      if (JSON.stringify(after.lines[key]) !== JSON.stringify(before.lines[key]))
+        throw new Error(`selfTestSave[${name}]: lines[${key}] が消えた/変わった: ${JSON.stringify(after.lines[key])} ≠ ${JSON.stringify(before.lines[key])}`);
+    }
+    for (const key of Object.keys(before.rares)) {
+      if (after.rares[key] !== before.rares[key])
+        throw new Error(`selfTestSave[${name}]: rares[${key}] が消えた/変わった`);
+    }
+    if (after.candy !== before.candy) throw new Error(`selfTestSave[${name}]: candy が変わった`);
+
+    /* R3-2: 巻き戻らない。divCorrect の移行値検証(旧セーブ=totalCorrectで埋まる/新セーブ=既存値を尊重) */
+    const hadDivCorrect = before.stats.divCorrect !== undefined;
+    const expectedDivCorrect = hadDivCorrect ? before.stats.divCorrect : before.stats.totalCorrect;
+    if (after.stats.divCorrect !== expectedDivCorrect)
+      throw new Error(`selfTestSave[${name}]: divCorrect migration got ${after.stats.divCorrect}, want ${expectedDivCorrect}`);
+    if (after.stats.divCorrect < 0) throw new Error(`selfTestSave[${name}]: divCorrect が負数`);
+    /* totalCorrect 自体の意味は変えない(R1) */
+    if (after.stats.totalCorrect !== before.stats.totalCorrect)
+      throw new Error(`selfTestSave[${name}]: totalCorrect が変わった(意味を変えてはいけない)`);
+
+    /* R3-3: 暴発しない。入力に無い rares キー(additive分)は false のまま・compCelebrated は入力どおり */
+    for (const key of [10, 11, 12, 23, 24, 25]) {
+      if (!(key in before.rares) && after.rares[key] !== false)
+        throw new Error(`selfTestSave[${name}]: 未所持のはずの rares[${key}] が true になった(暴発)`);
+    }
+    if (after.compCelebrated !== !!before.compCelebrated)
+      throw new Error(`selfTestSave[${name}]: compCelebrated が入力と異なる(暴発 or 消失)`);
+
+    /* R3-4: 前に進める。次のなかまへの距離が壊れていない(所持数と閾値の関係が矛盾しない) */
+    const ownedCount = [1, 2, 3].filter(l => after.lines[l].owned).length;
+    if (ownedCount < ENCOUNTER_AT.length) {
+      /* まだ森を全部所持していないなら、次の閾値は必ず今の divCorrect 以上の意味を持てる
+       * (閾値そのものを超えていても、それは「次の1体を迎える権利がある」ことを意味するだけで、
+       *  実際の付与は processCorrectAnswer() 側が担う。ここでは値が壊れていない=有限の非負整数であることを保証する)。 */
+      if (!Number.isInteger(after.stats.divCorrect) || after.stats.divCorrect < 0)
+        throw new Error(`selfTestSave[${name}]: divCorrect が壊れていて前に進められない`);
+    }
+    const kazanOwnedCount = [4, 5, 6].filter(l => after.lines[l].owned).length;
+    if (kazanOwnedCount < ENCOUNTER_AT.length && !Number.isInteger(after.stats.mulCorrect))
+      throw new Error(`selfTestSave[${name}]: mulCorrect が壊れていて前に進められない`);
+
+    n++;
+  }
+  console.log(`✅ selfTestSave passed: ${n} fixtures verified (消えない/巻き戻らない/暴発しない/前に進める)`);
+}
 
 /* ---------- たべさせる(給餌)によるレベルアップ ----------
  * v4: 自動吸収は廃止。ホーム/ずかんで選んだ1ラインにだけアメを渡す。
@@ -2859,11 +2987,18 @@ function processCorrectAnswer() {
     session.caughtThisSession.push(10);
   }
 
+  /* v6 Phase4a 追補B-1: エリアの対称化。森の加入判定は totalCorrect(全単元)ではなく
+   * divCorrect(わり算のみ)を見る。4bで物語がライン所持を見て進行する際、かけ算しか
+   * 遊んでいない子に かずのもりの物語が進んでしまうのを防ぐため。totalCorrect 自体の
+   * 意味(全単元の累計)は変えない。 */
+  const isDivUnit = !!(state.unit && typeof state.unit.id === 'string' && state.unit.id.startsWith('div-'));
+  if (isDivUnit) game.stats.divCorrect++;
+
   /* であい→なかまになる(まだ手に入れていないラインの中から抽選・必ず なかまになる)
    * v5.2 §7-2: 所持数ベースの閾値(ENCOUNTER_AT)で判定。旧 nextEncounterAt 方式のセーブとも、
    * 所持数だけを見ることで自然に互換が取れる(この関数ではもう更新しない・値はQRセーブ形式維持のため残置)。 */
   const ownedCount = [1, 2, 3].filter(l => game.lines[l].owned).length;
-  if (ownedCount < ENCOUNTER_AT.length && game.stats.totalCorrect >= ENCOUNTER_AT[ownedCount]) {
+  if (ownedCount < ENCOUNTER_AT.length && game.stats.divCorrect >= ENCOUNTER_AT[ownedCount]) {
     const avail = [1, 2, 3].filter(l => !game.lines[l].owned);
     if (avail.length) {
       const lineId = pick(avail);
@@ -3041,7 +3176,9 @@ function showEvolveOverlay(evt, onClose) {
  * 手に入れていない(セーブの手動編集などで所持解除された)場合は、いちばんレベルが高い子
  * (同率なら最後に仲間になった子)に自動フォールバックする。0体ならnull。 */
 function partnerLineId() {
-  const owned = [1, 2, 3].filter(l => game.lines[l].owned);
+  /* v6 Phase4a 追補B-2: 相棒選択の対象をライン1〜6(かずのもり+かざん)に拡張。
+   * 構造(自動フォールバック・同率タイブレーク)は変えず、対象ラインを広げるだけ。 */
+  const owned = [1, 2, 3, 4, 5, 6].filter(l => game.lines[l].owned);
   if (!owned.length) return null;
   if (game.partnerId && owned.includes(game.partnerId)) return game.partnerId;
   let maxLv = -1, candidates = [];
