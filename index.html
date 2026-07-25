@@ -4,6 +4,16 @@
 <meta charset="utf-8">
 <title>さんすうクエスト｜わり算</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Google tag (gtag.js) — 匿名の利用統計のみ。個人情報・入力値・こたえは送信しない(sqTrack参照)
+     head に置くことが重要: dataLayer スタブを先に定義することで、gtag.js 本体のロード完了前の
+     イベント呼び出しもキューに積まれて取りこぼされない。 -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-ST5Z0S53P8"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-ST5Z0S53P8');
+</script>
 <style>
   /* ============ tokens ============ */
   :root{
@@ -787,6 +797,24 @@
  *                     (a = b×q + r, 0 ≤ r < b, 九九の範囲, 図と数の一致) を自動検証。
  * ========================================================================= */
 
+/* ---------- analytics (GA4) ----------
+ * 送信するのは「どの単元をどれだけ遊んだか」の匿名集計のみ。
+ * 問題文・入力値・こたえ・localStorageの中身・QRセーブ文字列は絶対に送らない。
+ * gtag未ロード/通信ブロック/オフラインでも必ずno-opにして、ゲーム動作は止めない。 */
+function sqTrack(name, params) {
+  try {
+    if (typeof window.gtag !== 'function') return;
+    window.gtag('event', name, params || {});
+  } catch (e) { /* 計測失敗はゲーム続行を優先して無視 */ }
+}
+/* 起動回数はそのままだと準識別子になりうるのでバケット化して送る */
+function bootBucket(n) {
+  if (!(n > 1)) return '1';
+  if (n <= 5) return '2-5';
+  if (n <= 20) return '6-20';
+  return '21+';
+}
+
 /* ---------- utilities ---------- */
 const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const pick = (arr) => arr[rand(0, arr.length - 1)];
@@ -1095,6 +1123,8 @@ function selfTest() {
 const state = {
   unit: null, index: 0, correct: 0, streak: 0,
   problem: null, prevProblem: null, results: [], activeField: null, values: {},
+  /* 計測用(ゲームロジックには影響しない): クエスト所要時間と途中離脱の判定に使う */
+  questActive: false, startedAt: 0, bestStreak: 0,
 };
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -1104,6 +1134,17 @@ let game = null;
 const session = { eventQueue: [], caughtThisSession: [] };
 
 function show(screenId) {
+  /* 計測: プレイ中に別画面へ抜けた=途中離脱。showResult()は先にquestActive=falseにするので
+   * 正常クリアはここに入らない。 */
+  if (state.questActive && screenId !== 'screen-play') {
+    state.questActive = false;
+    sqTrack('quest_abandon', {
+      unit: state.unit ? state.unit.id : 'unknown',
+      answered: state.results.length,
+      correct: state.correct,
+    });
+  }
+  sqTrack('screen_open', { screen: screenId.replace('screen-', '') });
   ['screen-home', 'screen-play', 'screen-result', 'screen-pokedex', 'screen-parent', 'screen-storybook'].forEach(id =>
     $(id).classList.toggle('hidden', id !== screenId));
   window.scrollTo(0, 0);
@@ -1131,9 +1172,22 @@ function renderHome() {
 
 /* ---------- quest flow ---------- */
 function startQuest(unit) {
+  /* 計測: 前クエストが未終了なら「先に」離脱を確定させる。
+   * 下の state リセットより前に撃たないと answered/correct が 0 になるので順序厳守。 */
+  if (state.questActive) {
+    sqTrack('quest_abandon', {
+      unit: state.unit ? state.unit.id : 'unknown',
+      answered: state.results.length,
+      correct: state.correct,
+    });
+  }
   state.unit = unit; state.index = 0; state.correct = 0; state.streak = 0;
   state.results = []; state.prevProblem = null;
   session.eventQueue = []; session.caughtThisSession = [];
+  state.questActive = true;
+  state.startedAt = Date.now();
+  state.bestStreak = 0;
+  sqTrack('quest_start', { unit: unit.id });
   show('screen-play');
   loadProblem();
 }
@@ -1285,8 +1339,20 @@ function grade() {
   /* v5: つまずき傾向の記録(採点のたび・ミスのみ分類)。個別の問題文/入力値は保存しない(集計のみ)。 */
   if (!isCorrect) recordMiss(state.unit.id, classifyMiss(p, given, state.values));
 
+  /* 計測: 不正解の傾向のみ送る。問題文・入力値・こたえは送らない(単元と種別だけ)。 */
+  if (!isCorrect) {
+    const wrongField = p.fields.find(f => given[f.key] !== p.answer[f.key]);
+    sqTrack('wrong_answer', {
+      unit: state.unit.id,
+      has_remainder: p.fields.some(f => f.key === 'r'),
+      is_word: state.unit.id === 'div-word',
+      field: wrongField ? wrongField.key : 'unknown',
+    });
+  }
+
   state.results.push(isCorrect);
   if (isCorrect) { state.correct++; state.streak++; } else { state.streak = 0; }
+  if (state.streak > state.bestStreak) state.bestStreak = state.streak;
   $('streak').textContent = `🔥 ${state.streak}`;
   renderProgress();
 
@@ -1470,6 +1536,20 @@ function celebrate() {
 function showResult() {
   const total = state.unit.questions;
   const score = state.correct;
+  /* 計測: クリア。問題単位の結果はここに集約する(1問ごとに送るとイベントが増えすぎる)。
+   * questActive を先に落とすので、この後の show() は離脱扱いにならない。 */
+  if (state.questActive) {
+    state.questActive = false;
+    sqTrack('quest_clear', {
+      unit: state.unit.id,
+      correct: score,
+      total: total,
+      best_streak: state.bestStreak,
+      duration_sec: state.startedAt ? Math.round((Date.now() - state.startedAt) / 1000) : 0,
+    });
+    /* explain_views は送らない: このアプリの解説は正誤にかかわらず毎回表示される仕様(L1413付近)で、
+     * game.stats.explainViews は実質「回答数」と同値。指標として意味がないので落とした(2026-07-25 実測)。 */
+  }
   const rate = score / total;
   const stars = rate === 1 ? '⭐⭐⭐' : rate >= 0.7 ? '⭐⭐☆' : rate >= 0.4 ? '⭐☆☆' : '☆☆☆';
   const msg = rate === 1 ? 'パーフェクト！ わり算マスターだ！ 👑'
@@ -3469,6 +3549,23 @@ game.story = game.story || { read: {}, meta: {} };
 game.bootId = (game.bootId || 0) + 1;
 if (!game.storyMigrated) { deriveStoryReadFromState(); game.storyMigrated = true; }
 saveGame();
+/* 計測: 起動。GA4 の自動収集イベント(session_start/first_visit/page_view/user_engagement)とは
+ * 名前が衝突しないように game_launch にしている。 */
+sqTrack('game_launch', { is_first_launch: isNewPlayer, boot_bucket: bootBucket(game.bootId) });
+/* 計測: クエスト中にページを離れた場合も離脱として拾う。
+ * ⚠️ visibilitychange は使わない。モバイルはアプリ切替のたびに hidden になるため、
+ *    戻ってきて解き終えたユーザーまで「離脱」に数えて Q2(離脱率) の数字が壊れる。
+ *    実際にページを離れる pagehide だけに絞る。 */
+window.addEventListener('pagehide', flushAbandon);
+function flushAbandon() {
+  if (!state.questActive) return;
+  state.questActive = false;
+  sqTrack('quest_abandon', {
+    unit: state.unit ? state.unit.id : 'unknown',
+    answered: state.results.length,
+    correct: state.correct,
+  });
+}
 const restoredFromQr = restoreFromHash();
 if (restoredFromQr) { deriveStoryReadFromState(); game.story.read.prologue = true; saveGame(); }
 function bootHome() { checkStoryTriggers(); drainEventQueue(() => { renderHome(); show('screen-home'); }); }
