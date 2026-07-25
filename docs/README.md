@@ -35,17 +35,14 @@
 
 ---
 
-## ⚠️ 未統合のコード差分（2026-07-25 時点のスナップショット・現況は git log を正とする）
+## 旧 repo の v6 Phase 2 は取り込まない（2026-07-25 決定・佐々木さん）
 
-旧 repo の最終 commit `c7631fb`（2026-07-18）に **v6 Phase 2「かけざんのかざん」数学ロジック層**が入っているが、
-**本 repo の `index.html` には未統合**。
+旧 repo の最終 commit `c7631fb`（2026-07-18）に **v6 Phase 2「かけざんのかざん」数学ロジック層**
+（`makeMultiplication` / `selfTestMul` / かけ算 4 単元 `mul-basic` `mul-big` `mul-tech` `mul-word`）があるが、
 
-| | 本 repo（本番） | 旧 repo `sansu-quest.html` |
-|---|---|---|
-| GA4 計測（`sqTrack`） | ✅ あり | ❌ なし |
-| 有効な単元 | わり算 3 種（`mul` は `enabled:false`） | わり算 3 種 + **かけ算 4 種が `enabled:true`**（`mul-basic` / `mul-big` / `mul-tech` / `mul-word`） |
-| `makeMultiplication` / `selfTestMul` | ❌ なし | ✅ あり |
+> **決定: 現在の本番（この repo の `index.html`）を正本とする。旧 repo からのマージはしない。**
+> **かけ算は別途あらためて実装する。**
 
-v6 は Phase 3（画像）/ Phase 4（ゲーム層）/ Phase 5（検証）が**未実施**の途中成果のため、
-本番へ載せるかは佐々木さんの判断待ち。統合するなら「旧 HTML を土台に GA4 パッチ（commit `683dbd1`）を再適用する」方向が安全
-（かけ算ロジック 17KB を移植するより差分が小さいため）。
+- したがって本 repo の `index.html` に**かけ算 4 単元は入らない**（`mul` は `enabled:false` のまま）
+- 旧 repo `~/Documents/sansu-quest/sansu-quest.html` の Phase 2 実装は**参考資料**として残す（マージ元にはしない）
+- かけ算に着手するときの設計正本は本 repo の `v6-plan-kazan-area.md` / `kazan-story-bible.md` / `implementation-prompts.md`
