@@ -2,3 +2,5 @@
 # 表示用の画像は index.html に base64 で埋め込み済みのため、assets/ を配信する必要はない
 docs
 assets
+.claude
+CLAUDE.md

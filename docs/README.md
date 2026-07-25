@@ -12,17 +12,19 @@
 2026-07-25 に本 repo へ `docs/` `assets/` を統合し、旧 repo は凍結した。
 
 - 旧 repo: `~/Documents/sansu-quest`（**凍結・参照専用**。`ARCHIVED.md` 参照）
-- 旧 repo の `docs/` `assets/` は working tree から削除済み（git 履歴には残存）
+- 旧 repo にも `docs/` `assets/` のコピーが残っているが**参照してはいけない**（凍結済み・正本は本 repo）
 
 ## 構成
 
 | パス | 内容 |
 |---|---|
+| `CLAUDE.md` | **開発規約の正本**（Tier 判定・教育設計の憲法・必須検証・計測ルール・デプロイ手順） |
+| `.claude/agents/` | サブエージェント定義の正本（`~/.claude/agents/` へ symlink 済み） |
 | `index.html` | アプリ本体（単体 HTML・表示画像は base64 埋め込み） |
 | `docs/` | 設計正本（世界観 bible・モンスター設計・実装プロンプト集・エリア計画） |
 | `assets/monsters/` `assets/scenes/` | Codex 生成画像の**原本 PNG** + WebP（リテイク・再リサイズ用） |
 | `assets/brand/` | favicon / OGP の原本（2026-07-25〜） |
-| `.vercelignore` | `docs/` `assets/` を配信対象外にする（表示用は base64 埋め込み済みのため） |
+| `.vercelignore` | `docs/` `assets/` `.claude` `CLAUDE.md` を配信対象外にする（表示用は base64 埋め込み済みのため） |
 
 ## 画像を追加・差し替えるときの正本
 
