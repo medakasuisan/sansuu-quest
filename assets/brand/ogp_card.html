@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<style>
+  /* さんすうクエスト OGP カード 1200x630
+     トークンは index.html の :root（light）から転記 */
+  :root{
+    --bg:#EDF6FF; --card:#FFFFFF; --ink:#29395B; --muted:#6B7A99;
+    --accent:#FF7A45; --accent-deep:#E85D2A; --sun:#FFC53D; --ok:#2FBF8F;
+    --line:#D6E4F5;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:1200px;height:630px;overflow:hidden;
+    font-family:"Hiragino Maru Gothic ProN","Hiragino Maru Gothic Pro","BIZ UDPGothic","Yu Gothic",system-ui,sans-serif;
+    color:var(--ink);background:var(--bg)}
+  .card{position:relative;width:1200px;height:630px}
+  .bg{position:absolute;inset:0;background-image:url("gen_out/ogp_scene.png");
+    background-size:cover;background-position:right 78%}
+  /* 左側だけやわらかく白を敷いて可読性を出す（右のイラストは透かさない） */
+  .veil{position:absolute;inset:0;
+    background:linear-gradient(100deg, rgba(255,255,255,.95) 0%, rgba(255,255,255,.92) 44%, rgba(255,255,255,.55) 58%, rgba(255,255,255,0) 72%)}
+  .inner{position:absolute;inset:0;display:flex;align-items:center;padding:0 0 0 70px}
+  .col{width:700px}
+  .logo{font-size:72px;line-height:1.15;font-weight:800;letter-spacing:.01em;white-space:nowrap}
+  .div-mark{color:var(--accent);margin-right:8px}
+  .tagline{margin-top:16px;font-size:33px;font-weight:700;color:var(--ink);line-height:1.5;white-space:nowrap}
+  .chips{margin-top:30px;display:flex;gap:14px}
+  .chip{font-size:22px;font-weight:700;padding:9px 20px;border-radius:999px;white-space:nowrap;
+    background:#fff;border:3px solid var(--line);color:var(--muted);
+    box-shadow:0 4px 0 rgba(41,57,91,.08)}
+  .chip.hl{background:#FFE9DF;border-color:#FFC9B2;color:var(--accent-deep)}
+  .dots{position:absolute;left:0;top:0;width:1200px;height:630px;
+    background-image:radial-gradient(rgba(221,238,255,.55) 12%, transparent 13%);
+    background-size:34px 34px;mix-blend-mode:multiply;opacity:.5}
+  .bar{position:absolute;left:0;bottom:0;width:1200px;height:12px;
+    background:linear-gradient(90deg,var(--accent) 0%,var(--sun) 45%,var(--ok) 100%)}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="bg"></div>
+    <div class="dots"></div>
+    <div class="veil"></div>
+    <div class="inner">
+      <div class="col">
+        <h1 class="logo"><span class="div-mark">÷</span>さんすうクエスト</h1>
+        <p class="tagline">わけて わかる、わり算のぼうけん！</p>
+        <div class="chips">
+          <span class="chip hl">小3のわり算</span>
+          <span class="chip">あまりなし／あまりあり</span>
+          <span class="chip">解説つき</span>
+        </div>
+      </div>
+    </div>
+    <div class="bar"></div>
+  </div>
+</body>
+</html>
