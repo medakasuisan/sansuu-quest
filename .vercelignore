@@ -1,5 +1,6 @@
-# 設計正本・原本画像はデプロイ対象外（配信されるのは index.html と root のブランド画像のみ）
-# 表示用の画像は index.html に base64 で埋め込み済みのため、assets/ を配信する必要はない
+# 設計正本・原本画像はデプロイ対象外（配信されるのは index.html / img/ と root のブランド画像のみ）
+# 表示用の画像は 2026-07-27 に img/ へ外部ファイル化済み（docs/refactor-plan-2026-07-27.md 参照）。
+# assets/ は原本PNG（差し替え作業用）のためデプロイ対象外のまま。img/ は配信対象に含める（除外しない）。
 docs
 assets
 .claude
