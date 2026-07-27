@@ -11,7 +11,7 @@
 正本: /Users/sasaki_shin-ichi/Documents/sansu-quest/sansu-quest.html
 
 ## 作業前の必読ファイル(全文読むこと)
-- docs/v6-plan-kazan-area.md (計画の正本。特に §5 憲法)
+- docs/v6-plan-kazan-area.md (計画の正本。特に §5 基本原則)
 - {BIBLE} (台本・図鑑テキスト・トリガー・シーン絵IDの正本)
 - docs/monster-design.md「v2 ロスター かざん 12体」節
 - sansu-quest.html のゲーム層(既存かずのもりの加入・給餌・進化・話解放・図鑑・相棒・セーブの実装)
