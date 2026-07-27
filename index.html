@@ -34,6 +34,8 @@
   gtag('js', new Date());
   gtag('config', 'G-ST5Z0S53P8');
 </script>
+<!-- 起動直後に必ず要る案内役の絵を先読み(契約 v7-refactor-b)。相棒画像はセーブ依存で静的に書けないため対象外(正本§5-2(c)) -->
+<link rel="preload" as="image" href="img/guide.webp">
 <style>
   /* ============ tokens ============ */
   :root{
@@ -4725,6 +4727,14 @@ if (restoredFromQr) {
   showIntro(() => { game.introSeen = true; saveGame(); bootHome(); });
 } else {
   bootHome();
+}
+
+/* Service Worker: オフライン動作の担保(契約 v7-refactor-b)。
+ * 未対応ブラウザ・登録失敗でもゲームは通常どおり動くこと(計測と同じくno-op方針)。 */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
 }
 </script>
 
