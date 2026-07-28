@@ -1451,87 +1451,6 @@ function nextProblem(unit, prev) {
   return drawFromPool(unit.pool);
 }
 
-/* ---------- 起動時セルフテスト(正しさの担保) ---------- */
-function selfTest() {
-  const cases = [
-    ['calcExact',       () => Generators.calcExact()],
-    ['calcRemainder',   () => Generators.calcRemainder()],
-    ['wordEqual/exact', () => Generators.wordEqual({ withRemainder: false })],
-    ['wordEqual/rem',   () => Generators.wordEqual({ withRemainder: true })],
-    ['wordQuota/exact', () => Generators.wordQuota({ withRemainder: false })],
-    ['wordQuota/rem',   () => Generators.wordQuota({ withRemainder: true })],
-  ];
-  let n = 0;
-  for (const [name, gen] of cases) {
-    for (let i = 0; i < 200; i++) {
-      const p = gen();
-      assertDivision(p.d);
-      for (const f of p.fields) {
-        if (!(f.key in p.answer)) throw new Error(`${name}: field ${f.key} has no answer`);
-        if (!Number.isInteger(p.answer[f.key]) || p.answer[f.key] < 0)
-          throw new Error(`${name}: bad answer for ${f.key}`);
-      }
-      const v = p.explain.visual;
-      if (v.groups * v.groupSize + v.rest !== p.d.a)
-        throw new Error(`${name}: visual mismatch`);
-      n++;
-    }
-  }
-  console.log(`✅ selfTest passed: ${n} problems verified (a=b×q+r, 0≤r<b, 九九 range, visual consistency)`);
-
-  /* ---- v6 Phase2: かけ算 9生成器の検証(新規ブロック。上のわり算ブロックは変更していない) ---- */
-  /* D4: 23×4 の bunpaiSteps が「20×4」「80」「3×4」「12」「92」をこの順で含む */
-  const fixture = bunpaiSteps({ a: 23, b: 4, p: 92, parts: { a1: 20, a2: 3 } });
-  const fixtureJoined = fixture.join(' / ');
-  let cursor = -1;
-  for (const token of ['20×4', '**80**', '3×4', '**12**', '**92**']) {
-    const idx = fixtureJoined.indexOf(token, cursor + 1);
-    if (idx <= cursor) throw new Error(`bunpaiSteps fixture(23×4): "${token}" が正しい順で含まれない: ${fixtureJoined}`);
-    cursor = idx;
-  }
-
-  const mulCases = [
-    ['mulTens',     () => Generators.mulTens()],
-    ['mulCalc2x1',  () => Generators.mulCalc2x1()],
-    ['mulCalc3x1',  () => Generators.mulCalc3x1()],
-    ['mulCalc2x2',  () => Generators.mulCalc2x2()],
-    ['mulZero',     () => Generators.mulZero()],
-    ['mulLaw',      () => Generators.mulLaw()],
-    ['mulEstimate', () => Generators.mulEstimate()],
-    ['wordTimes',   () => Generators.wordTimes()],
-    ['wordInverse', () => Generators.wordInverse()],
-  ];
-  let nMul = 0;
-  let mul3x1VisualCount = 0, mul3x1Total = 0; // D6 実測用
-  for (const [name, gen] of mulCases) {
-    for (let i = 0; i < 200; i++) {
-      const p = gen();
-      assertMulProblem(p.d); // D3: assertMultiplication(A1〜A6)を経由
-      for (const f of p.fields) {
-        if (!(f.key in p.answer)) throw new Error(`${name}: field ${f.key} has no answer`);
-        if (!Number.isInteger(p.answer[f.key]) || p.answer[f.key] < 0)
-          throw new Error(`${name}: bad answer for ${f.key}`);
-      }
-      if (name === 'mulZero' && p.answer.q !== 0) // D5
-        throw new Error(`mulZero: answer must be 0, got ${p.answer.q}`);
-      const v = p.explain.visual;
-      if (name === 'mulCalc3x1') { mul3x1Total++; if (v) mul3x1VisualCount++; }
-      if (v) {
-        if (!('p' in p.d)) throw new Error(`${name}: visual present but d has no p`);
-        if (p.d.p > 60) throw new Error(`${name}: visual should be absent when p>60 (p=${p.d.p})`); // D6
-        if (v.groups * v.groupSize + v.rest !== p.d.p) throw new Error(`${name}: visual mismatch`); // D7
-      }
-      nMul++;
-    }
-  }
-  if (mul3x1VisualCount !== 0)
-    throw new Error(`mulCalc3x1: visual should never appear (p is always >60), but ${mul3x1VisualCount}/${mul3x1Total} had visual`);
-  console.log(`✅ selfTest(mul) passed: ${nMul} problems verified (a×b=p, bunpai parts, mulZero=0, visual gate p≤60, mulCalc3x1 visual=${mul3x1VisualCount}/${mul3x1Total})`);
-  console.log(`✅ selfTest total: ${n + nMul} problems verified`);
-
-  /* CLAUDE.md §3-2: セーブ移行の機械テストも selfTest() の末尾から呼ぶ */
-  selfTestSave();
-}
 
 /* =========================================================================
  * UI エンジン
@@ -2089,7 +2008,7 @@ const SCENE_IMG = {
   K10: 'img/K10.webp',
 };
 
-/* =========================================================================
+/* ===== QR_ENCODE ここから ================================================
  * QR_ENCODE — 自己完結 QR コードエンコーダ(外部ライブラリ不使用)
  * byte mode 専用・誤り訂正レベル M 固定・バージョン自動選択(1〜10)。
  * ISO/IEC 18004 のアルゴリズム(qrcode-generator 系ライブラリと同じ考え方)を
@@ -2443,6 +2362,7 @@ const QR_ENCODE = (function () {
 
   return { encode };
 })();
+/* ===== QR_ENCODE ここまで ===== */
 
 /* QR行列 → canvas描画(モジュールを塗りつぶし矩形で描くのでcanvas上でも
  * 拡大縮小によるボケがなく、そのままカメラ/デコーダで読み取れる)。 */
@@ -2808,197 +2728,6 @@ function saveGameObj(obj) {
 }
 function saveGame() { saveGameObj(game); }
 
-/* ---------- セーブ移行の機械テスト(CLAUDE.md §2-2/§3-2・v6 Phase4a 追補B で制定) ----------
- * selfTest() が問題生成の正しさを機械保証するのと同じ思想で、mergeIntoDefault() による
- * セーブ移行の正しさも機械保証する。代表セーブ(新規/進行中/コンプ済み + 追補B後の実在パターン)を
- * 固定データで持ち、§2-2 R3 の4観点(消えない/巻き戻らない/暴発しない/前に進める)を assert する。 */
-const SAVE_FIXTURES = [
-  {
-    name: '新規(追補B後に作られた最新形式のセーブ。divCorrectが既にある)',
-    save: {
-      v: 2, candy: 2, activeLine: null, catchOrder: [],
-      lines: { 1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 } },
-      rares: { 10: false, 11: false, 12: false },
-      stats: { totalAnswered: 1, totalCorrect: 1, explainViews: 1, bestStreak: 1, divCorrect: 1 },
-      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
-      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 1, partnerId: null,
-    },
-  },
-  {
-    name: '進行中(追補B以前の旧形式。divCorrectが無い・森2体所持・かざん1体所持)',
-    save: {
-      v: 2, candy: 4, activeLine: 4, catchOrder: [1, 2, 4],
-      lines: {
-        1: { owned: true, xp: 10 }, 2: { owned: true, xp: 2 }, 3: { owned: false, xp: 0 },
-        4: { owned: true, xp: 5 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
-      },
-      rares: { 10: true, 11: false, 12: false, 23: false, 24: false, 25: false },
-      /* divCorrect キー無し = 追補B以前の旧セーブ。totalCorrect=15 で埋まることを検証する */
-      stats: { totalAnswered: 18, totalCorrect: 15, explainViews: 15, bestStreak: 5, mulCorrect: 3, estimateCorrect: 0 },
-      nextEncounterAt: 10, introSeen: true, compCelebrated: false, mission: null,
-      story: { read: { prologue: true }, meta: {} }, storyMigrated: true, metAt: { 1: '2026-07-01' }, bootId: 5, partnerId: 1,
-    },
-  },
-  {
-    name: 'コンプ済み(追補B以前の旧形式。24体全所持・divCorrectが無い)',
-    save: {
-      v: 2, candy: 0, activeLine: 1, catchOrder: [1, 2, 3, 4, 5, 6],
-      lines: {
-        1: { owned: true, xp: 64 }, 2: { owned: true, xp: 64 }, 3: { owned: true, xp: 64 },
-        4: { owned: true, xp: 64 }, 5: { owned: true, xp: 64 }, 6: { owned: true, xp: 64 },
-      }, /* 64 = MAX_LINE_XP(定数の初期化順に依存しないよう直接数値で持つ) */
-      rares: { 10: true, 11: true, 12: true, 23: true, 24: true, 25: true },
-      stats: { totalAnswered: 600, totalCorrect: 500, explainViews: 500, bestStreak: 20, mulCorrect: 200, estimateCorrect: 40 },
-      nextEncounterAt: 22, introSeen: true, compCelebrated: true, mission: null,
-      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 40, partnerId: 3,
-    },
-  },
-  {
-    name: '追補B後・かけ算しか遊んでいない子(divCorrect:0が正当な値。totalCorrectで上書きされてはいけない)',
-    save: {
-      v: 2, candy: 6, activeLine: 4, catchOrder: [4],
-      lines: {
-        1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
-        4: { owned: true, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
-      },
-      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
-      stats: { totalAnswered: 12, totalCorrect: 12, explainViews: 12, bestStreak: 5, mulCorrect: 12, estimateCorrect: 2, divCorrect: 0 },
-      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
-      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 3, partnerId: 4,
-    },
-  },
-  {
-    /* v6 Phase4b §3-2-4 必須ケース1: 「かざん進行済み・物語なし」(4aだけを遊んだ状態)。
-     * storyMigrated は既に true(森の物語は既に導出済み)だが kazanStoryMigrated キーが無い
-     * = 4bが出る前に4aだけ遊んだ実在パターン。導出後に かざんの話が整合していること(S3)。 */
-    name: 'かざん進行済み・物語なし(4aだけを遊んだ状態。storyMigrated=true・kazanStoryMigratedが無い)',
-    save: {
-      v: 2, candy: 4, activeLine: 4, catchOrder: [4],
-      lines: {
-        1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
-        4: { owned: true, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
-      },
-      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
-      stats: { totalAnswered: 5, totalCorrect: 5, explainViews: 5, bestStreak: 3, mulCorrect: 5, estimateCorrect: 0, divCorrect: 0 },
-      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
-      story: { read: {}, meta: {} }, storyMigrated: true, metAt: { 14: '2026-07-25' }, bootId: 8, partnerId: 4,
-    },
-  },
-  {
-    /* v6 Phase4b §3-2-4 必須ケース2: 「かずのもり既読あり・かざん未着手」。
-     * 森の既読(prologue/1-1)が保持されたまま、かけ算は1問もプレイしていない(mulCorrect:0)ので
-     * かざんの話は1話も導出されないこと(S1: 森の既読保持 / S3: かざん暴発なし)。 */
-    name: 'かずのもり既読あり・かざん未着手(森だけ進行・かけ算は1問もプレイなし)',
-    save: {
-      v: 2, candy: 2, activeLine: 1, catchOrder: [1],
-      lines: {
-        1: { owned: true, xp: 10 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
-        4: { owned: false, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
-      },
-      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
-      stats: { totalAnswered: 20, totalCorrect: 18, explainViews: 20, bestStreak: 4, mulCorrect: 0, estimateCorrect: 0, divCorrect: 18 },
-      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
-      story: { read: { prologue: true, '1-1': true }, meta: {} }, storyMigrated: true, metAt: { 1: '2026-07-01' }, bootId: 10, partnerId: 1,
-    },
-  },
-];
-function selfTestSave() {
-  let n = 0;
-  for (const { name, save } of SAVE_FIXTURES) {
-    /* mergeIntoDefault は引数を書き換えないので、入力(save)をそのまま「移行前」の参照として使える */
-    const before = save;
-    const after = mergeIntoDefault(JSON.parse(JSON.stringify(save))); /* 実際のloadGame()と同じくJSON経由のコピーを渡す */
-
-    /* R3-1: 消えない。入力に存在した lines/rares/candy/xp はすべて保持される */
-    for (const key of Object.keys(before.lines)) {
-      if (JSON.stringify(after.lines[key]) !== JSON.stringify(before.lines[key]))
-        throw new Error(`selfTestSave[${name}]: lines[${key}] が消えた/変わった: ${JSON.stringify(after.lines[key])} ≠ ${JSON.stringify(before.lines[key])}`);
-    }
-    for (const key of Object.keys(before.rares)) {
-      if (after.rares[key] !== before.rares[key])
-        throw new Error(`selfTestSave[${name}]: rares[${key}] が消えた/変わった`);
-    }
-    if (after.candy !== before.candy) throw new Error(`selfTestSave[${name}]: candy が変わった`);
-
-    /* R3-2: 巻き戻らない。divCorrect の移行値検証(旧セーブ=totalCorrectで埋まる/新セーブ=既存値を尊重) */
-    const hadDivCorrect = before.stats.divCorrect !== undefined;
-    const expectedDivCorrect = hadDivCorrect ? before.stats.divCorrect : before.stats.totalCorrect;
-    if (after.stats.divCorrect !== expectedDivCorrect)
-      throw new Error(`selfTestSave[${name}]: divCorrect migration got ${after.stats.divCorrect}, want ${expectedDivCorrect}`);
-    if (after.stats.divCorrect < 0) throw new Error(`selfTestSave[${name}]: divCorrect が負数`);
-    /* totalCorrect 自体の意味は変えない(R1) */
-    if (after.stats.totalCorrect !== before.stats.totalCorrect)
-      throw new Error(`selfTestSave[${name}]: totalCorrect が変わった(意味を変えてはいけない)`);
-
-    /* R3-3: 暴発しない。入力に無い rares キー(additive分)は false のまま・compCelebrated は入力どおり */
-    for (const key of [10, 11, 12, 23, 24, 25]) {
-      if (!(key in before.rares) && after.rares[key] !== false)
-        throw new Error(`selfTestSave[${name}]: 未所持のはずの rares[${key}] が true になった(暴発)`);
-    }
-    if (after.compCelebrated !== !!before.compCelebrated)
-      throw new Error(`selfTestSave[${name}]: compCelebrated が入力と異なる(暴発 or 消失)`);
-
-    /* R3-4: 前に進める。次のなかまへの距離が壊れていない(所持数と閾値の関係が矛盾しない) */
-    const ownedCount = [1, 2, 3].filter(l => after.lines[l].owned).length;
-    if (ownedCount < ENCOUNTER_AT.length) {
-      /* まだ森を全部所持していないなら、次の閾値は必ず今の divCorrect 以上の意味を持てる
-       * (閾値そのものを超えていても、それは「次の1体を迎える権利がある」ことを意味するだけで、
-       *  実際の付与は processCorrectAnswer() 側が担う。ここでは値が壊れていない=有限の非負整数であることを保証する)。 */
-      if (!Number.isInteger(after.stats.divCorrect) || after.stats.divCorrect < 0)
-        throw new Error(`selfTestSave[${name}]: divCorrect が壊れていて前に進められない`);
-    }
-    const kazanOwnedCount = [4, 5, 6].filter(l => after.lines[l].owned).length;
-    if (kazanOwnedCount < ENCOUNTER_AT.length && !Number.isInteger(after.stats.mulCorrect))
-      throw new Error(`selfTestSave[${name}]: mulCorrect が壊れていて前に進められない`);
-
-    /* v6 Phase4b: 物語(game.story.read)の移行検証。deriveStoryReadFromState()/
-     * deriveKazanStoryReadFromState() は STORY[id].trigger() が参照するグローバル game に
-     * 依存するため、テスト対象の after を一時的に game に差し替えて実際のブート導出手順
-     * (§3-2-2)をそのままシミュレートする(try/finallyで必ず元に戻す)。 */
-    const savedGame = game;
-    try {
-      game = after;
-      const queueLenBefore = session.eventQueue.length;
-      if (!after.storyMigrated) { deriveStoryReadFromState(); after.storyMigrated = true; }
-      if (!after.kazanStoryMigrated) { deriveKazanStoryReadFromState(); after.kazanStoryMigrated = true; }
-
-      /* S3: 暴発しない。導出は既読フラグを立てるだけで、演出キューには絶対に触れない */
-      if (session.eventQueue.length !== queueLenBefore)
-        throw new Error(`selfTestSave[${name}]: 導出だけで session.eventQueue が動いた(暴発)`);
-
-      /* S1/S2/S3 共通: 各話について、導出が実際に走ったか(ガードの状態)を踏まえて期待値を計算する。
-       * ガードは森(storyMigrated)とかざん(kazanStoryMigrated)で独立(既存の「1回だけ導出」仕様どおり)。
-       * 既に true(=過去に導出済みという想定)なら今回は走らないので、期待値は「入力の既読状態のまま」。
-       * false(=今回はじめて導出)なら、期待値は「入力の既読状態 または 今のstateでtrigger()がtrue」。
-       * これで消えない/巻き戻らない/暴発しないを1つのassertionで同時に検証できる(過不足どちらも検出)。 */
-      const forestDerivedThisPass = !before.storyMigrated;
-      const kazanDerivedThisPass = !before.kazanStoryMigrated;
-      for (const id of STORY_ORDER.filter(i => i !== 'prologue')) {
-        const wasRead = !!(before.story && before.story.read && before.story.read[id]);
-        const expected = wasRead || (forestDerivedThisPass && STORY[id].trigger());
-        const got = !!after.story.read[id];
-        if (got !== expected)
-          throw new Error(`selfTestSave[${name}]: story.read[${id}] 期待=${expected} 実際=${got}(暴発 or 消失 or 巻き戻り)`);
-      }
-      for (const id of STORY_ORDER_KAZAN) {
-        const wasRead = !!(before.story && before.story.read && before.story.read[id]);
-        const expected = wasRead || (kazanDerivedThisPass && STORY[id].trigger());
-        const got = !!after.story.read[id];
-        if (got !== expected)
-          throw new Error(`selfTestSave[${name}]: story.read[${id}] 期待=${expected} 実際=${got}(暴発 or 消失 or 巻き戻り)`);
-      }
-
-      /* S4: 前に進める。両ガードが消費されて次回以降は通常の checkStoryTriggers() 経路に戻る */
-      if (!after.storyMigrated || !after.kazanStoryMigrated)
-        throw new Error(`selfTestSave[${name}]: 移行ガードが消費されず、前に進めない状態のまま`);
-    } finally {
-      game = savedGame;
-    }
-
-    n++;
-  }
-  console.log(`✅ selfTestSave passed: ${n} fixtures verified (消えない/巻き戻らない/暴発しない/前に進める・物語導出を含む)`);
-}
 
 /* ---------- たべさせる(給餌)によるレベルアップ ----------
  * v4: 自動吸収は廃止。ホーム/ずかんで選んだ1ラインにだけアメを渡す。
@@ -4684,6 +4413,280 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', () => reloadFromStorageIfSafe());
 
+/* ===== 開発用（配信物には残す・CLAUDE.md §3 必須検証で使う） ここから ===== */
+/* ---------- 起動時セルフテスト(正しさの担保) ---------- */
+function selfTest() {
+  const cases = [
+    ['calcExact',       () => Generators.calcExact()],
+    ['calcRemainder',   () => Generators.calcRemainder()],
+    ['wordEqual/exact', () => Generators.wordEqual({ withRemainder: false })],
+    ['wordEqual/rem',   () => Generators.wordEqual({ withRemainder: true })],
+    ['wordQuota/exact', () => Generators.wordQuota({ withRemainder: false })],
+    ['wordQuota/rem',   () => Generators.wordQuota({ withRemainder: true })],
+  ];
+  let n = 0;
+  for (const [name, gen] of cases) {
+    for (let i = 0; i < 200; i++) {
+      const p = gen();
+      assertDivision(p.d);
+      for (const f of p.fields) {
+        if (!(f.key in p.answer)) throw new Error(`${name}: field ${f.key} has no answer`);
+        if (!Number.isInteger(p.answer[f.key]) || p.answer[f.key] < 0)
+          throw new Error(`${name}: bad answer for ${f.key}`);
+      }
+      const v = p.explain.visual;
+      if (v.groups * v.groupSize + v.rest !== p.d.a)
+        throw new Error(`${name}: visual mismatch`);
+      n++;
+    }
+  }
+  console.log(`✅ selfTest passed: ${n} problems verified (a=b×q+r, 0≤r<b, 九九 range, visual consistency)`);
+
+  /* ---- v6 Phase2: かけ算 9生成器の検証(新規ブロック。上のわり算ブロックは変更していない) ---- */
+  /* D4: 23×4 の bunpaiSteps が「20×4」「80」「3×4」「12」「92」をこの順で含む */
+  const fixture = bunpaiSteps({ a: 23, b: 4, p: 92, parts: { a1: 20, a2: 3 } });
+  const fixtureJoined = fixture.join(' / ');
+  let cursor = -1;
+  for (const token of ['20×4', '**80**', '3×4', '**12**', '**92**']) {
+    const idx = fixtureJoined.indexOf(token, cursor + 1);
+    if (idx <= cursor) throw new Error(`bunpaiSteps fixture(23×4): "${token}" が正しい順で含まれない: ${fixtureJoined}`);
+    cursor = idx;
+  }
+
+  const mulCases = [
+    ['mulTens',     () => Generators.mulTens()],
+    ['mulCalc2x1',  () => Generators.mulCalc2x1()],
+    ['mulCalc3x1',  () => Generators.mulCalc3x1()],
+    ['mulCalc2x2',  () => Generators.mulCalc2x2()],
+    ['mulZero',     () => Generators.mulZero()],
+    ['mulLaw',      () => Generators.mulLaw()],
+    ['mulEstimate', () => Generators.mulEstimate()],
+    ['wordTimes',   () => Generators.wordTimes()],
+    ['wordInverse', () => Generators.wordInverse()],
+  ];
+  let nMul = 0;
+  let mul3x1VisualCount = 0, mul3x1Total = 0; // D6 実測用
+  for (const [name, gen] of mulCases) {
+    for (let i = 0; i < 200; i++) {
+      const p = gen();
+      assertMulProblem(p.d); // D3: assertMultiplication(A1〜A6)を経由
+      for (const f of p.fields) {
+        if (!(f.key in p.answer)) throw new Error(`${name}: field ${f.key} has no answer`);
+        if (!Number.isInteger(p.answer[f.key]) || p.answer[f.key] < 0)
+          throw new Error(`${name}: bad answer for ${f.key}`);
+      }
+      if (name === 'mulZero' && p.answer.q !== 0) // D5
+        throw new Error(`mulZero: answer must be 0, got ${p.answer.q}`);
+      const v = p.explain.visual;
+      if (name === 'mulCalc3x1') { mul3x1Total++; if (v) mul3x1VisualCount++; }
+      if (v) {
+        if (!('p' in p.d)) throw new Error(`${name}: visual present but d has no p`);
+        if (p.d.p > 60) throw new Error(`${name}: visual should be absent when p>60 (p=${p.d.p})`); // D6
+        if (v.groups * v.groupSize + v.rest !== p.d.p) throw new Error(`${name}: visual mismatch`); // D7
+      }
+      nMul++;
+    }
+  }
+  if (mul3x1VisualCount !== 0)
+    throw new Error(`mulCalc3x1: visual should never appear (p is always >60), but ${mul3x1VisualCount}/${mul3x1Total} had visual`);
+  console.log(`✅ selfTest(mul) passed: ${nMul} problems verified (a×b=p, bunpai parts, mulZero=0, visual gate p≤60, mulCalc3x1 visual=${mul3x1VisualCount}/${mul3x1Total})`);
+  console.log(`✅ selfTest total: ${n + nMul} problems verified`);
+
+  /* CLAUDE.md §3-2: セーブ移行の機械テストも selfTest() の末尾から呼ぶ */
+  selfTestSave();
+}
+/* ---------- セーブ移行の機械テスト(CLAUDE.md §2-2/§3-2・v6 Phase4a 追補B で制定) ----------
+ * selfTest() が問題生成の正しさを機械保証するのと同じ思想で、mergeIntoDefault() による
+ * セーブ移行の正しさも機械保証する。代表セーブ(新規/進行中/コンプ済み + 追補B後の実在パターン)を
+ * 固定データで持ち、§2-2 R3 の4観点(消えない/巻き戻らない/暴発しない/前に進める)を assert する。 */
+const SAVE_FIXTURES = [
+  {
+    name: '新規(追補B後に作られた最新形式のセーブ。divCorrectが既にある)',
+    save: {
+      v: 2, candy: 2, activeLine: null, catchOrder: [],
+      lines: { 1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 } },
+      rares: { 10: false, 11: false, 12: false },
+      stats: { totalAnswered: 1, totalCorrect: 1, explainViews: 1, bestStreak: 1, divCorrect: 1 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 1, partnerId: null,
+    },
+  },
+  {
+    name: '進行中(追補B以前の旧形式。divCorrectが無い・森2体所持・かざん1体所持)',
+    save: {
+      v: 2, candy: 4, activeLine: 4, catchOrder: [1, 2, 4],
+      lines: {
+        1: { owned: true, xp: 10 }, 2: { owned: true, xp: 2 }, 3: { owned: false, xp: 0 },
+        4: { owned: true, xp: 5 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: true, 11: false, 12: false, 23: false, 24: false, 25: false },
+      /* divCorrect キー無し = 追補B以前の旧セーブ。totalCorrect=15 で埋まることを検証する */
+      stats: { totalAnswered: 18, totalCorrect: 15, explainViews: 15, bestStreak: 5, mulCorrect: 3, estimateCorrect: 0 },
+      nextEncounterAt: 10, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: { prologue: true }, meta: {} }, storyMigrated: true, metAt: { 1: '2026-07-01' }, bootId: 5, partnerId: 1,
+    },
+  },
+  {
+    name: 'コンプ済み(追補B以前の旧形式。24体全所持・divCorrectが無い)',
+    save: {
+      v: 2, candy: 0, activeLine: 1, catchOrder: [1, 2, 3, 4, 5, 6],
+      lines: {
+        1: { owned: true, xp: 64 }, 2: { owned: true, xp: 64 }, 3: { owned: true, xp: 64 },
+        4: { owned: true, xp: 64 }, 5: { owned: true, xp: 64 }, 6: { owned: true, xp: 64 },
+      }, /* 64 = MAX_LINE_XP(定数の初期化順に依存しないよう直接数値で持つ) */
+      rares: { 10: true, 11: true, 12: true, 23: true, 24: true, 25: true },
+      stats: { totalAnswered: 600, totalCorrect: 500, explainViews: 500, bestStreak: 20, mulCorrect: 200, estimateCorrect: 40 },
+      nextEncounterAt: 22, introSeen: true, compCelebrated: true, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 40, partnerId: 3,
+    },
+  },
+  {
+    name: '追補B後・かけ算しか遊んでいない子(divCorrect:0が正当な値。totalCorrectで上書きされてはいけない)',
+    save: {
+      v: 2, candy: 6, activeLine: 4, catchOrder: [4],
+      lines: {
+        1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
+        4: { owned: true, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
+      stats: { totalAnswered: 12, totalCorrect: 12, explainViews: 12, bestStreak: 5, mulCorrect: 12, estimateCorrect: 2, divCorrect: 0 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: {}, bootId: 3, partnerId: 4,
+    },
+  },
+  {
+    /* v6 Phase4b §3-2-4 必須ケース1: 「かざん進行済み・物語なし」(4aだけを遊んだ状態)。
+     * storyMigrated は既に true(森の物語は既に導出済み)だが kazanStoryMigrated キーが無い
+     * = 4bが出る前に4aだけ遊んだ実在パターン。導出後に かざんの話が整合していること(S3)。 */
+    name: 'かざん進行済み・物語なし(4aだけを遊んだ状態。storyMigrated=true・kazanStoryMigratedが無い)',
+    save: {
+      v: 2, candy: 4, activeLine: 4, catchOrder: [4],
+      lines: {
+        1: { owned: false, xp: 0 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
+        4: { owned: true, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
+      stats: { totalAnswered: 5, totalCorrect: 5, explainViews: 5, bestStreak: 3, mulCorrect: 5, estimateCorrect: 0, divCorrect: 0 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: {}, meta: {} }, storyMigrated: true, metAt: { 14: '2026-07-25' }, bootId: 8, partnerId: 4,
+    },
+  },
+  {
+    /* v6 Phase4b §3-2-4 必須ケース2: 「かずのもり既読あり・かざん未着手」。
+     * 森の既読(prologue/1-1)が保持されたまま、かけ算は1問もプレイしていない(mulCorrect:0)ので
+     * かざんの話は1話も導出されないこと(S1: 森の既読保持 / S3: かざん暴発なし)。 */
+    name: 'かずのもり既読あり・かざん未着手(森だけ進行・かけ算は1問もプレイなし)',
+    save: {
+      v: 2, candy: 2, activeLine: 1, catchOrder: [1],
+      lines: {
+        1: { owned: true, xp: 10 }, 2: { owned: false, xp: 0 }, 3: { owned: false, xp: 0 },
+        4: { owned: false, xp: 0 }, 5: { owned: false, xp: 0 }, 6: { owned: false, xp: 0 },
+      },
+      rares: { 10: false, 11: false, 12: false, 23: false, 24: false, 25: false },
+      stats: { totalAnswered: 20, totalCorrect: 18, explainViews: 20, bestStreak: 4, mulCorrect: 0, estimateCorrect: 0, divCorrect: 18 },
+      nextEncounterAt: 2, introSeen: true, compCelebrated: false, mission: null,
+      story: { read: { prologue: true, '1-1': true }, meta: {} }, storyMigrated: true, metAt: { 1: '2026-07-01' }, bootId: 10, partnerId: 1,
+    },
+  },
+];
+function selfTestSave() {
+  let n = 0;
+  for (const { name, save } of SAVE_FIXTURES) {
+    /* mergeIntoDefault は引数を書き換えないので、入力(save)をそのまま「移行前」の参照として使える */
+    const before = save;
+    const after = mergeIntoDefault(JSON.parse(JSON.stringify(save))); /* 実際のloadGame()と同じくJSON経由のコピーを渡す */
+
+    /* R3-1: 消えない。入力に存在した lines/rares/candy/xp はすべて保持される */
+    for (const key of Object.keys(before.lines)) {
+      if (JSON.stringify(after.lines[key]) !== JSON.stringify(before.lines[key]))
+        throw new Error(`selfTestSave[${name}]: lines[${key}] が消えた/変わった: ${JSON.stringify(after.lines[key])} ≠ ${JSON.stringify(before.lines[key])}`);
+    }
+    for (const key of Object.keys(before.rares)) {
+      if (after.rares[key] !== before.rares[key])
+        throw new Error(`selfTestSave[${name}]: rares[${key}] が消えた/変わった`);
+    }
+    if (after.candy !== before.candy) throw new Error(`selfTestSave[${name}]: candy が変わった`);
+
+    /* R3-2: 巻き戻らない。divCorrect の移行値検証(旧セーブ=totalCorrectで埋まる/新セーブ=既存値を尊重) */
+    const hadDivCorrect = before.stats.divCorrect !== undefined;
+    const expectedDivCorrect = hadDivCorrect ? before.stats.divCorrect : before.stats.totalCorrect;
+    if (after.stats.divCorrect !== expectedDivCorrect)
+      throw new Error(`selfTestSave[${name}]: divCorrect migration got ${after.stats.divCorrect}, want ${expectedDivCorrect}`);
+    if (after.stats.divCorrect < 0) throw new Error(`selfTestSave[${name}]: divCorrect が負数`);
+    /* totalCorrect 自体の意味は変えない(R1) */
+    if (after.stats.totalCorrect !== before.stats.totalCorrect)
+      throw new Error(`selfTestSave[${name}]: totalCorrect が変わった(意味を変えてはいけない)`);
+
+    /* R3-3: 暴発しない。入力に無い rares キー(additive分)は false のまま・compCelebrated は入力どおり */
+    for (const key of [10, 11, 12, 23, 24, 25]) {
+      if (!(key in before.rares) && after.rares[key] !== false)
+        throw new Error(`selfTestSave[${name}]: 未所持のはずの rares[${key}] が true になった(暴発)`);
+    }
+    if (after.compCelebrated !== !!before.compCelebrated)
+      throw new Error(`selfTestSave[${name}]: compCelebrated が入力と異なる(暴発 or 消失)`);
+
+    /* R3-4: 前に進める。次のなかまへの距離が壊れていない(所持数と閾値の関係が矛盾しない) */
+    const ownedCount = [1, 2, 3].filter(l => after.lines[l].owned).length;
+    if (ownedCount < ENCOUNTER_AT.length) {
+      /* まだ森を全部所持していないなら、次の閾値は必ず今の divCorrect 以上の意味を持てる
+       * (閾値そのものを超えていても、それは「次の1体を迎える権利がある」ことを意味するだけで、
+       *  実際の付与は processCorrectAnswer() 側が担う。ここでは値が壊れていない=有限の非負整数であることを保証する)。 */
+      if (!Number.isInteger(after.stats.divCorrect) || after.stats.divCorrect < 0)
+        throw new Error(`selfTestSave[${name}]: divCorrect が壊れていて前に進められない`);
+    }
+    const kazanOwnedCount = [4, 5, 6].filter(l => after.lines[l].owned).length;
+    if (kazanOwnedCount < ENCOUNTER_AT.length && !Number.isInteger(after.stats.mulCorrect))
+      throw new Error(`selfTestSave[${name}]: mulCorrect が壊れていて前に進められない`);
+
+    /* v6 Phase4b: 物語(game.story.read)の移行検証。deriveStoryReadFromState()/
+     * deriveKazanStoryReadFromState() は STORY[id].trigger() が参照するグローバル game に
+     * 依存するため、テスト対象の after を一時的に game に差し替えて実際のブート導出手順
+     * (§3-2-2)をそのままシミュレートする(try/finallyで必ず元に戻す)。 */
+    const savedGame = game;
+    try {
+      game = after;
+      const queueLenBefore = session.eventQueue.length;
+      if (!after.storyMigrated) { deriveStoryReadFromState(); after.storyMigrated = true; }
+      if (!after.kazanStoryMigrated) { deriveKazanStoryReadFromState(); after.kazanStoryMigrated = true; }
+
+      /* S3: 暴発しない。導出は既読フラグを立てるだけで、演出キューには絶対に触れない */
+      if (session.eventQueue.length !== queueLenBefore)
+        throw new Error(`selfTestSave[${name}]: 導出だけで session.eventQueue が動いた(暴発)`);
+
+      /* S1/S2/S3 共通: 各話について、導出が実際に走ったか(ガードの状態)を踏まえて期待値を計算する。
+       * ガードは森(storyMigrated)とかざん(kazanStoryMigrated)で独立(既存の「1回だけ導出」仕様どおり)。
+       * 既に true(=過去に導出済みという想定)なら今回は走らないので、期待値は「入力の既読状態のまま」。
+       * false(=今回はじめて導出)なら、期待値は「入力の既読状態 または 今のstateでtrigger()がtrue」。
+       * これで消えない/巻き戻らない/暴発しないを1つのassertionで同時に検証できる(過不足どちらも検出)。 */
+      const forestDerivedThisPass = !before.storyMigrated;
+      const kazanDerivedThisPass = !before.kazanStoryMigrated;
+      for (const id of STORY_ORDER.filter(i => i !== 'prologue')) {
+        const wasRead = !!(before.story && before.story.read && before.story.read[id]);
+        const expected = wasRead || (forestDerivedThisPass && STORY[id].trigger());
+        const got = !!after.story.read[id];
+        if (got !== expected)
+          throw new Error(`selfTestSave[${name}]: story.read[${id}] 期待=${expected} 実際=${got}(暴発 or 消失 or 巻き戻り)`);
+      }
+      for (const id of STORY_ORDER_KAZAN) {
+        const wasRead = !!(before.story && before.story.read && before.story.read[id]);
+        const expected = wasRead || (kazanDerivedThisPass && STORY[id].trigger());
+        const got = !!after.story.read[id];
+        if (got !== expected)
+          throw new Error(`selfTestSave[${name}]: story.read[${id}] 期待=${expected} 実際=${got}(暴発 or 消失 or 巻き戻り)`);
+      }
+
+      /* S4: 前に進める。両ガードが消費されて次回以降は通常の checkStoryTriggers() 経路に戻る */
+      if (!after.storyMigrated || !after.kazanStoryMigrated)
+        throw new Error(`selfTestSave[${name}]: 移行ガードが消費されず、前に進めない状態のまま`);
+    } finally {
+      game = savedGame;
+    }
+
+    n++;
+  }
+  console.log(`✅ selfTestSave passed: ${n} fixtures verified (消えない/巻き戻らない/暴発しない/前に進める・物語導出を含む)`);
+}
+/* ===== 開発用 ここまで ===== */
 /* ---------- boot ---------- */
 $('btn-quit').addEventListener('click', goHome);
 $('btn-check').addEventListener('click', grade);

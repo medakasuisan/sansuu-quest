@@ -174,8 +174,12 @@
 - v6 かざんエリアは **Phase 2 → 3 → 4a → 4b → 5 まで全完走**（Phase 5 統合検証は 2026-07-27 に実機目視完了）
 - GA4 Phase 1 の6イベント実装済み・favicon / OGP 設定済み
 - 表示画像は **46枚**（`GUIDE_IMG` 1 / `SCENE_IMG` 21（`s01`–`s11` + `K1`–`K10`）/ **`MONSTER_PNG`** 24（`1`–`25`・13欠番））
-- **リファクタリング（案B）は Phase 4 まで完了**（2026-07-27・設計正本 `docs/refactor-plan-2026-07-27.md`）
+- **リファクタリング（案B）は Phase 5 まで完了**（2026-07-28・設計正本 `docs/refactor-plan-2026-07-27.md`）
   - Phase 2+3: 画像46枚を `img/` へ外部化（契約 `v7-refactor-a`・`index.html` 1,906,768 → 251,891 bytes）
   - Phase 4: `sw.js` によるオフライン担保 + `GUIDE_IMG` の preload（契約 `v7-refactor-b`）
-  - **未着手**: Phase 5（QRエンコーダ約350行のバナー隔離・`selfTest` 系を末尾へ移動・L2）
-  - **本番未反映**（2026-07-27 時点で `origin/main` は `f1d377c`）。デプロイは 👤佐々木さんの push 承認待ち
+  - Phase 5: QR_ENCODE を「ここから/ここまで」バナーで視覚的に隔離（分離はしない）+ `selfTest()` / `SAVE_FIXTURES` / `selfTestSave()` を **boot ブロック直前の「開発用」ブロック**へ集約（2026-07-28・L2）
+    - 🔴 **末尾ではなく boot 直前に置いた理由**: `SAVE_FIXTURES` は `const` で、`selfTest();` の呼び出しより後ろに定義を移すと **TDZ の `ReferenceError` で起動が停止する**。`function` 宣言はホイストされるため「関数は動くが `const` だけ落ちる」形で出る。この配置は変更しないこと
+    - 移動は純粋な cut & paste（中身は1バイト未変更）。行の多重集合 diff で「追加4行 / 削除1行」のみを機械確認済み
+  - **Phase 2+3 / Phase 4 は本番反映済み**（`origin/main` = `0fc9d9c`）。2026-07-28 に本番実測で確認: `sw.js` = 200 / `index.html` の `data:image/webp` 残存 = 0 件
+    - ※ 本節は 2026-07-27 時点で「本番未反映（`origin/main` は `f1d377c`）」と記載していたが、同日 20:23 の `0fc9d9c` push で実態が変わっていた。現況を反映して更新（2026-07-28 実測）
+  - **未 push**: `58c86b7` / `9c8932e`（契約検査係の定義・規約）。本番挙動に影響しないため次回 push に同乗させる
