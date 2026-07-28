@@ -1,11 +1,15 @@
 /* さんすうクエスト Service Worker（契約 v7-refactor-b）
  * 目的: オフライン動作の担保（規約 §0）。vanilla・依存ライブラリゼロ・外部から何も読み込まない。
  *
- * CACHE_NAME はデプロイのたびに更新すること（更新しないと activate 時の旧キャッシュ破棄が走らず、
- * 新しいコードが子どもの端末に届かない）。
+ * 🔴 CACHE_NAME は「sw.js または index.html を変えたら」必ず上げること（規約 §6）。
+ * 理由: ナビゲーション要求は network-first なので、オンラインの利用者には index.html の更新が届く。
+ * だが CORE（'./' = index.html）を掴み直すのは install だけで、install は sw.js が変わったときしか
+ * 再実行されない。CACHE_NAME を据え置くと「オンラインは新しい版・オフラインは古い版」という
+ * 乖離がデプロイのたびに広がる（§0 の「オフラインでも完全動作」が静かに崩れる）。
  * 由来: v7-refactor-b 初版（2026-07-27）。
+ * 更新履歴: sq-v1 → sq-v2（2026-07-28・Phase 5 の index.html 変更に追随）。
  */
-const CACHE_NAME = 'sq-v1';
+const CACHE_NAME = 'sq-v2';
 
 /* CORE: install の中で同期的に取得する。ここが失敗したら install 失敗（＝旧SWのまま。安全側）。
  * ⚠️ ここには「起動直後に必ず要る最小限」だけを置く（index.html + GUIDE_IMG の2件）。 */
